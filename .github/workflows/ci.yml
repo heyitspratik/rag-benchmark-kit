@@ -52,6 +52,50 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Carries the pgvector extension, which the pgvector store needs.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: rag
+          POSTGRES_DB: rag_bench
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rag"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports: ["6333:6333"]
+    env:
+      POSTGRES_DSN: postgresql+psycopg://rag:rag@localhost:5432/rag_bench
+      QDRANT_URL: http://localhost:6333
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Sync dependencies
+        run: uv sync --all-groups --frozen
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Integration tests
+        run: uv run pytest -m integration
+
   commit-lint:
     name: Conventional commit PR title
     if: github.event_name == 'pull_request'
