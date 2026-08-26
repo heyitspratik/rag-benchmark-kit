@@ -30,6 +30,15 @@ class DocumentSection(BaseModel):
     title: str = ""
     start: NonNegativeInt = Field(description="Inclusive character offset into the document.")
     end: NonNegativeInt = Field(description="Exclusive character offset into the document.")
+    level: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Nesting depth: 1 for a top-level unit such as an article, 2 for a numbered "
+            "paragraph inside it. Levels overlap, so a chunker that splits on structure "
+            "must pick one level rather than iterating all sections."
+        ),
+    )
 
 
 class Document(BaseModel):
@@ -52,9 +61,20 @@ class Document(BaseModel):
             end: Exclusive end offset.
 
         Returns:
-            The matching section refs, in document order.
+            The matching section refs at every level, in document order.
         """
         return tuple(s.ref for s in self.sections if s.start < end and start < s.end)
+
+    def sections_at_level(self, level: int) -> tuple[DocumentSection, ...]:
+        """Return the non-overlapping sections at one nesting depth.
+
+        Args:
+            level: 1 for top-level units, 2 for their numbered subdivisions.
+
+        Returns:
+            The matching sections, in document order.
+        """
+        return tuple(s for s in self.sections if s.level == level)
 
 
 class Chunk(BaseModel):

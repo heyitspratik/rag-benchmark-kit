@@ -1,8 +1,39 @@
 """Fixtures shared by the whole suite."""
 
+from collections.abc import Sequence
+
 import pytest
 
 from rag_bench.core import settings as settings_module
+from rag_bench.core.interfaces import BaseEmbedder, Vector
+from rag_bench.core.registry import register_embedder
+
+#: Registered once for the whole suite, under a name no real config would use, so tests
+#: can drive the pipeline through the registry without downloading model weights.
+OFFLINE_EMBEDDER = "_test_offline_embedder"
+OFFLINE_DIMENSION = 4
+
+
+@register_embedder(OFFLINE_EMBEDDER)
+class OfflineEmbedder(BaseEmbedder):
+    """Derives a vector from the text length, so results are deterministic and free."""
+
+    def __init__(self, batch_size: int = 32) -> None:
+        self.batch_size = batch_size
+
+    @property
+    def dimension(self) -> int:
+        return OFFLINE_DIMENSION
+
+    def embed_documents(self, texts: Sequence[str]) -> list[Vector]:
+        return [self._vector(text) for text in texts]
+
+    def embed_query(self, text: str) -> Vector:
+        return self._vector(text)
+
+    def _vector(self, text: str) -> Vector:
+        return [float(len(text) % 7), 1.0, 0.0, 0.0]
+
 
 # Settings read from the process environment and from a developer's local .env; both are
 # cleared so a test's outcome never depends on the machine it runs on.

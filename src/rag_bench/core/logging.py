@@ -16,6 +16,17 @@ from rag_bench.core.settings import AppEnv
 
 _configured = False
 
+# Third-party libraries that log every HTTP request or model file at INFO, which buries
+# the pipeline's own events during an index build.
+_NOISY_LIBRARIES = (
+    "httpx",
+    "httpcore",
+    "urllib3",
+    "filelock",
+    "sentence_transformers",
+    "transformers",
+)
+
 
 def configure_logging(app_env: AppEnv = "dev", log_level: str = "INFO") -> None:
     """Configure structlog and the standard library root logger.
@@ -31,6 +42,8 @@ def configure_logging(app_env: AppEnv = "dev", log_level: str = "INFO") -> None:
         return
 
     logging.basicConfig(format="%(message)s", stream=sys.stderr, level=log_level.upper())
+    for name in _NOISY_LIBRARIES:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
     shared: list[structlog.typing.Processor] = [
         structlog.contextvars.merge_contextvars,

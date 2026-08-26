@@ -15,15 +15,24 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "beautifulsoup4>=4.12",
     "httpx>=0.27",
     "langchain-anthropic>=0.3",
     "langchain-core>=0.3",
     "langchain-ollama>=0.2",
     "langchain-openai>=0.2",
+    "langchain-text-splitters>=0.3",
+    "lxml>=5.3",
+    "numpy>=1.26",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "pyyaml>=6.0",
+    "qdrant-client>=1.12",
+    "sentence-transformers>=3.3",
     "structlog>=24.4",
+    # Declared directly, not just pulled in by sentence-transformers, so that the
+    # CPU-only index below actually applies to it.
+    "torch>=2.5",
     "typer>=0.15",
 ]
 
@@ -34,9 +43,20 @@ Repository = "https://github.com/pratikahir/rag-benchmark-kit"
 [project.scripts]
 rag-bench = "rag_bench.cli.main:app"
 
+# sentence-transformers pulls torch, whose default wheels carry the CUDA runtime and add
+# roughly two gigabytes. Everything here runs on CPU, so take the CPU-only index.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [dependency-groups]
 dev = [
     "mypy>=1.13",
+    "types-beautifulsoup4>=4.12",
     "pre-commit>=4.0",
     "ruff>=0.8",
     "types-pyyaml>=6.0",
@@ -84,7 +104,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 # Tests are self-documenting through their names, and interface stubs legitimately
 # ignore the arguments they are handed.
-"tests/**" = ["D100", "D101", "D102", "D103", "D104", "ARG002"]
+"tests/**" = ["D100", "D101", "D102", "D103", "D104", "D107", "ARG002"]
 "alembic/**" = ["D", "N999"]
 
 [tool.ruff.format]

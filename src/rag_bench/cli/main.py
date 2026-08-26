@@ -5,12 +5,15 @@ from typing import Annotated
 import typer
 
 from rag_bench import __version__
+from rag_bench.cli import corpus, index
 
 app = typer.Typer(
     name="rag-bench",
     help="Configurable, benchmarked RAG pipeline.",
     add_completion=False,
 )
+app.add_typer(corpus.app, name="corpus")
+app.add_typer(index.app, name="index")
 
 
 @app.callback(invoke_without_command=True)

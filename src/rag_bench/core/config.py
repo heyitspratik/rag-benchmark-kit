@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol, Self
 
@@ -41,6 +42,13 @@ class _NameLookup(Protocol):
 
 #: Stages a sweep is allowed to vary, in the order they appear in the pipeline.
 SWEEPABLE_STAGES = ("chunker", "embedder", "store", "retriever", "generator")
+
+#: Stages an index build touches. Retrieval and generation play no part in ingestion, so
+#: an index can be built from a config whose retriever is not registered.
+INDEX_STAGES = ("corpus", "chunker", "embedder", "store")
+
+#: Every stage, which answering a question needs.
+ALL_STAGES = ("corpus", *SWEEPABLE_STAGES)
 
 
 class ComponentConfig(BaseModel):
@@ -199,17 +207,20 @@ def load_sweep_config(path: Path) -> SweepConfig:
     return _load_model(path, SweepConfig)
 
 
-def validate_against_registries(config: PipelineConfig) -> None:
-    """Check every component name in a config is actually registered.
+def validate_against_registries(config: PipelineConfig, stages: Sequence[str] = ALL_STAGES) -> None:
+    """Check the component names a config uses are actually registered.
 
     Separate from schema validation because it requires the implementation modules to have
     been imported; the caller decides when that happens.
 
     Args:
         config: A schema-valid pipeline config.
+        stages: Which stages to check. Defaults to all of them; an index build passes
+            :data:`INDEX_STAGES`, since ingestion never touches retrieval or generation.
 
     Raises:
-        UnknownComponentError: If any stage names an unregistered implementation.
+        UnknownComponentError: If any checked stage names an unregistered implementation.
+        ConfigValidationError: If ``stages`` names something that is not a pipeline stage.
     """
     registries: dict[str, _NameLookup] = {
         "corpus": LOADERS,
@@ -220,7 +231,12 @@ def validate_against_registries(config: PipelineConfig) -> None:
         "generator": GENERATORS,
     }
     missing: list[str] = []
-    for stage, registry in registries.items():
+    for stage in stages:
+        registry = registries.get(stage)
+        if registry is None:
+            raise ConfigValidationError(
+                f"Unknown pipeline stage {stage!r}. Expected one of: {', '.join(registries)}"
+            )
         name = config.corpus.name if stage == "corpus" else config.component(stage).name
         if name not in registry:
             missing.append(f"{stage}={name!r} (available: {', '.join(registry.names()) or 'none'})")
