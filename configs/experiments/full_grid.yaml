@@ -1,0 +1,8 @@
+# 4 chunkers x 2 embedders x 3 retrievers = 24 configurations, sharing 8 built indexes.
+name: full_grid_v1
+eval_set: data/eval/gdpr_ai_act_qa.jsonl
+base_config: configs/default.yaml
+sweep:
+  chunker: [fixed, recursive, semantic, structural]
+  embedder: [bge_small, bge_large]
+  retriever: [dense, hybrid, hybrid_rerank]

@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Environment
+.env
+.env.local
+
+# Corpus is downloaded, never committed. The eval set under data/eval/ IS committed.
+data/corpus/
+
+# Model weights and HuggingFace cache
+.cache/
+models/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Local agent and editor configuration
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+
+# Local build spec (not published)
+docs/BUILD-SPEC.md

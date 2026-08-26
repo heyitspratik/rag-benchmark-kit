@@ -1,0 +1,38 @@
+# The default pipeline. Every name below resolves through a registry, so swapping a
+# strategy is a one-word edit here and needs no code change.
+corpus:
+  name: eu_regulations
+  path: data/corpus/eu_regulations
+
+chunker:
+  name: structural
+  params:
+    max_chars: 1200
+    overlap: 150
+
+embedder:
+  name: bge_small
+  params:
+    batch_size: 32
+    normalize: true
+
+store:
+  name: qdrant
+  params:
+    collection: rag_bench
+    distance: cosine
+
+retriever:
+  name: hybrid_rerank
+  params:
+    top_k: 5
+    overfetch_multiplier: 4
+    bm25_weight: 0.4
+    dense_weight: 0.6
+    reranker_model: BAAI/bge-reranker-base
+
+generator:
+  name: cited
+  params:
+    max_context_chars: 8000
+    temperature: 0.0
