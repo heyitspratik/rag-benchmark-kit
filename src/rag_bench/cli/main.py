@@ -6,6 +6,7 @@ import typer
 
 from rag_bench import __version__
 from rag_bench.cli import corpus, index
+from rag_bench.cli.query import query
 
 app = typer.Typer(
     name="rag-bench",
@@ -14,6 +15,7 @@ app = typer.Typer(
 )
 app.add_typer(corpus.app, name="corpus")
 app.add_typer(index.app, name="index")
+app.command("query")(query)
 
 
 @app.callback(invoke_without_command=True)

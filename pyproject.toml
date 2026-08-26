@@ -28,6 +28,7 @@ dependencies = [
     "pydantic-settings>=2.6",
     "pyyaml>=6.0",
     "qdrant-client>=1.12",
+    "rank-bm25>=0.2.2",
     "sentence-transformers>=3.3",
     "structlog>=24.4",
     # Declared directly, not just pulled in by sentence-transformers, so that the
@@ -119,6 +120,12 @@ files = ["src"]
 plugins = ["pydantic.mypy"]
 warn_unreachable = true
 enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
+
+# rank_bm25 ships no type information. Declared once here rather than as a per-import
+# ignore, so the exception is visible in one place.
+[[tool.mypy.overrides]]
+module = ["rank_bm25.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

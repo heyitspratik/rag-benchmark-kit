@@ -4,9 +4,24 @@ Registration happens as a side effect of import, so anything that resolves a com
 name must import this package first. Call :func:`load_components` to say so explicitly.
 """
 
-from rag_bench.components import chunkers, embedders, loaders, stores
+from rag_bench.components import (
+    chunkers,
+    embedders,
+    generators,
+    loaders,
+    retrievers,
+    stores,
+)
 
-__all__ = ["chunkers", "embedders", "load_components", "loaders", "stores"]
+__all__ = [
+    "chunkers",
+    "embedders",
+    "generators",
+    "load_components",
+    "loaders",
+    "retrievers",
+    "stores",
+]
 
 
 def load_components() -> None:

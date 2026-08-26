@@ -1,7 +1,9 @@
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import httpx
+from langchain_core.messages import AIMessage
 from typer.testing import CliRunner
 
 from rag_bench.cli.main import app
@@ -107,3 +109,75 @@ def test_index_status_reports_the_stored_chunk_count(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
     assert "chunks" in result.output
+
+
+class _StubChatModel:
+    """A provider stand-in, so the CLI tests never need a key or a running Ollama."""
+
+    def invoke(self, messages: list[tuple[str, str]]) -> AIMessage:
+        return AIMessage(content="A controller may charge a reasonable fee [1].")
+
+
+def _built_config(tmp_path: Path) -> Path:
+    """Write an offline config and build its index, ready to query."""
+    config = _offline_config(tmp_path)
+    runner.invoke(app, ["index", "build", "--config", str(config)])
+    return config
+
+
+def _stubbed_provider() -> Any:
+    return patch.multiple(
+        "rag_bench.pipeline.querier",
+        check_llm_health=lambda *_args, **_kwargs: None,
+    )
+
+
+def test_query_prints_the_answer_and_its_sources(tmp_path: Path) -> None:
+    config = _built_config(tmp_path)
+
+    with (
+        _stubbed_provider(),
+        patch("rag_bench.core.llm.build_chat_model", return_value=_StubChatModel()),
+    ):
+        result = runner.invoke(app, ["query", "What fee may be charged?", "-c", str(config)])
+
+    assert result.exit_code == 0, result.output
+    assert "reasonable fee" in result.output
+    assert "Sources" in result.output
+
+
+def test_query_can_show_the_retrieved_context(tmp_path: Path) -> None:
+    config = _built_config(tmp_path)
+
+    with (
+        _stubbed_provider(),
+        patch("rag_bench.core.llm.build_chat_model", return_value=_StubChatModel()),
+    ):
+        result = runner.invoke(
+            app, ["query", "What fee?", "-c", str(config), "--show-context", "--k", "1"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Retrieved context" in result.output
+    assert "score=" in result.output
+
+
+def test_query_reports_an_unreachable_provider(tmp_path: Path) -> None:
+    # The whole point of the startup probe: a clean message, not a stack trace from
+    # somewhere deep inside a retrieval call.
+    config = _built_config(tmp_path)
+
+    result = runner.invoke(app, ["query", "anything", "-c", str(config)])
+
+    assert result.exit_code == 1
+    assert "LLM_PROVIDER_ERROR" in result.output
+
+
+def test_query_reports_a_missing_index(tmp_path: Path) -> None:
+    config = _offline_config(tmp_path)
+
+    with _stubbed_provider():
+        result = runner.invoke(app, ["query", "anything", "-c", str(config)])
+
+    assert result.exit_code == 1
+    assert "INDEX_NOT_READY" in result.output
