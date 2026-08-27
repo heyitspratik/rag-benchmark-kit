@@ -17,6 +17,7 @@ classifiers = [
 dependencies = [
     "alembic>=1.14",
     "beautifulsoup4>=4.12",
+    "fastapi>=0.115",
     "httpx>=0.27",
     "langchain-anthropic>=0.3",
     "langchain-core>=0.3",
@@ -39,6 +40,7 @@ dependencies = [
     # CPU-only index below actually applies to it.
     "torch>=2.5",
     "typer>=0.15",
+    "uvicorn[standard]>=0.32",
 ]
 
 # RAGAS is optional. Its four metrics are LLM-judged, so they need a judge model and a

@@ -55,6 +55,38 @@ Enable them with `uv sync --extra ragas` and `--ragas`.
 Everything is also reported per difficulty band, because a configuration that wins
 overall but collapses on multi-hop questions is the finding worth reading.
 
+## HTTP API
+
+The pipeline is usable as a service, not just a CLI.
+
+```bash
+make serve      # or: uvicorn rag_bench.api.main:app --port 8000
+```
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/queries` | Ask a question, get an answer with citations |
+| `GET` | `/api/v1/configurations` | List every registered component, by stage |
+| `POST` | `/api/v1/indexes` | Start an index build (202 with a `Location` header) |
+| `GET` | `/api/v1/indexes/{id}` | Poll a build's progress |
+| `GET` | `/api/v1/benchmark-runs` | List runs, cursor-paginated |
+| `GET` | `/api/v1/benchmark-runs/{id}` | One run with its configurations and metrics |
+| `GET` | `/health/live`, `/health/ready` | Liveness and readiness |
+
+Interactive docs live at `/docs` and the OpenAPI document at `/openapi.json`, which is
+the closest thing this project has to a user interface.
+
+Every failure shares one envelope, so a client writes the handling once:
+
+```json
+{"error": {"code": "INDEX_NOT_READY", "message": "...", "details": {}, "request_id": "..."}}
+```
+
+The `request_id` is echoed in the `X-Request-ID` header, propagated from the caller when
+supplied, and bound to every log line the request produces. Setting `API_KEY` turns on
+`X-API-Key` authentication for the write endpoints; leave it unset and the quickstart
+keeps working with no setup.
+
 ## Configuration
 
 Every stage is chosen by name in [configs/default.yaml](configs/default.yaml). Changing a

@@ -4,7 +4,7 @@ CONFIG  ?= configs/default.yaml
 EXPERIMENT ?= configs/experiments/full_grid.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev up down migrate download-corpus pull-models index query \
+.PHONY: help install dev serve up down migrate download-corpus pull-models index query \
         bench bench-smoke test test-integration lint format typecheck check clean
 
 help:  ## Show this help
@@ -18,6 +18,9 @@ dev:  ## Sync every dependency group and install the pre-commit hooks
 	$(UV) sync --all-groups
 	$(UV) run pre-commit install
 	@test -f .env || cp .env.example .env
+
+serve:  ## Run the HTTP API locally with reload
+	$(UV) run uvicorn rag_bench.api.main:app --reload --port $${PORT:-8000}
 
 up:  ## Start the full stack (api, postgres, qdrant, ollama)
 	$(COMPOSE) up -d --wait
