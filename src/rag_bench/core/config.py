@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Protocol, Self
 
@@ -59,9 +59,23 @@ class ComponentConfig(BaseModel):
     name: str = Field(min_length=1)
     params: dict[str, JsonValue] = Field(default_factory=dict)
 
-    def with_name(self, name: str) -> ComponentConfig:
-        """Return a copy of this component pinned to a different implementation."""
-        return self.model_copy(update={"name": name})
+    def with_name(
+        self, name: str, params: Mapping[str, JsonValue] | None = None
+    ) -> ComponentConfig:
+        """Return a copy pinned to a different implementation.
+
+        Args:
+            name: The replacement implementation's registry name.
+            params: Replacement parameters. Omit to keep the current ones, which is only
+                safe when both implementations accept the same arguments.
+
+        Returns:
+            A new component config; the original is untouched.
+        """
+        update: dict[str, object] = {"name": name}
+        if params is not None:
+            update["params"] = dict(params)
+        return self.model_copy(update=update)
 
 
 class CorpusConfig(BaseModel):
@@ -104,17 +118,20 @@ class PipelineConfig(BaseModel):
         value: ComponentConfig = getattr(self, stage)
         return value
 
-    def with_component(self, stage: str, name: str) -> PipelineConfig:
+    def with_component(
+        self, stage: str, name: str, params: Mapping[str, JsonValue] | None = None
+    ) -> PipelineConfig:
         """Return a copy with one stage swapped to a different implementation.
 
         Args:
             stage: One of :data:`SWEEPABLE_STAGES`.
             name: The replacement implementation's registry name.
+            params: Replacement parameters for that stage. Omit to keep the current ones.
 
         Returns:
             A new config; the original is untouched.
         """
-        return self.model_copy(update={stage: self.component(stage).with_name(name)})
+        return self.model_copy(update={stage: self.component(stage).with_name(name, params)})
 
     def fingerprint(self) -> str:
         """A stable short hash of the whole configuration.
@@ -150,6 +167,15 @@ class SweepConfig(BaseModel):
     eval_set: Path
     base_config: Path
     sweep: dict[str, list[str]]
+    params: dict[str, dict[str, dict[str, JsonValue]]] = Field(
+        default_factory=dict,
+        description=(
+            "Optional per-implementation parameters, keyed by stage then by name. "
+            "Implementations of one stage do not share a signature: a dense retriever "
+            "has no use for bm25_weight and refuses it. Without this, sweeping the "
+            "retriever axis would hand every implementation the base config's params."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_sweep_axes(self) -> Self:
@@ -166,7 +192,35 @@ class SweepConfig(BaseModel):
             duplicates = sorted({n for n in names if names.count(n) > 1})
             if duplicates:
                 raise ValueError(f"sweep.{stage}: duplicate entries {', '.join(duplicates)}")
+
+        # Params for a stage or a name that is never swept is almost always a typo, and
+        # silently ignoring it would leave the run using parameters nobody intended.
+        for stage, by_name in self.params.items():
+            if stage not in SWEEPABLE_STAGES:
+                raise ValueError(
+                    f"params: unknown stage {stage!r}. "
+                    f"Sweepable stages are: {', '.join(SWEEPABLE_STAGES)}"
+                )
+            unused = sorted(set(by_name) - set(self.sweep.get(stage, [])))
+            if unused:
+                raise ValueError(
+                    f"params.{stage}: {', '.join(unused)} "
+                    f"{'is' if len(unused) == 1 else 'are'} "
+                    f"not in sweep.{stage}"
+                )
         return self
+
+    def params_for(self, stage: str, name: str) -> dict[str, JsonValue] | None:
+        """Parameters declared for one implementation, if any.
+
+        Args:
+            stage: The pipeline stage.
+            name: The implementation's registry name.
+
+        Returns:
+            The declared parameters, or ``None`` to keep the base config's.
+        """
+        return self.params.get(stage, {}).get(name)
 
     @property
     def run_count(self) -> int:

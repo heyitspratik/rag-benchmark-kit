@@ -146,3 +146,53 @@ def test_pipeline_config_is_immutable() -> None:
 
     with pytest.raises(ValueError, match="frozen"):
         config.chunker = config.chunker  # type: ignore[misc]
+
+
+def test_the_committed_full_grid_declares_per_implementation_params() -> None:
+    # Without these, sweeping the retriever hands dense the base config's bm25_weight
+    # and the configuration fails at construction.
+    sweep = load_sweep_config(FULL_GRID)
+
+    assert sweep.params_for("retriever", "dense") == {"top_k": 5}
+    assert "bm25_weight" in (sweep.params_for("retriever", "hybrid") or {})
+    # The semantic chunker cuts on meaning, so it has no overlap setting to receive.
+    assert "overlap" not in (sweep.params_for("chunker", "semantic") or {})
+
+
+def test_params_for_an_undeclared_implementation_is_none() -> None:
+    sweep = load_sweep_config(FULL_GRID)
+
+    assert sweep.params_for("embedder", "bge_small") is None
+    assert sweep.params_for("retriever", "not_swept") is None
+
+
+def test_params_for_a_stage_that_is_not_swept_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "sweep.yaml"
+    path.write_text(
+        _SWEEP_HEADER + "sweep:\n  chunker: [fixed]\nparams:\n  reranker:\n    x: {a: 1}\n"
+    )
+
+    with pytest.raises(ConfigValidationError, match=r"params: unknown stage 'reranker'"):
+        load_sweep_config(path)
+
+
+def test_params_for_an_implementation_outside_the_sweep_is_rejected(tmp_path: Path) -> None:
+    # Almost always a typo, and silently ignoring it leaves the run using parameters
+    # nobody intended.
+    path = tmp_path / "sweep.yaml"
+    path.write_text(
+        _SWEEP_HEADER + "sweep:\n  chunker: [fixed]\nparams:\n  chunker:\n    structural: {a: 1}\n"
+    )
+
+    with pytest.raises(ConfigValidationError, match=r"params\.chunker: structural is not in"):
+        load_sweep_config(path)
+
+
+def test_with_component_can_replace_params_as_well_as_the_name() -> None:
+    config = load_pipeline_config(DEFAULT_CONFIG)
+
+    swapped = config.with_component("retriever", "dense", {"top_k": 3})
+
+    assert swapped.retriever.name == "dense"
+    assert swapped.retriever.params == {"top_k": 3}
+    assert "bm25_weight" not in swapped.retriever.params

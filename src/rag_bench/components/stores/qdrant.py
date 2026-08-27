@@ -50,6 +50,10 @@ def _connect(url: str, api_key: str | None, timeout_s: float) -> QdrantClient:
 
     Embedded mode is what lets the test suite and a first local run exercise the real
     store without Docker; the server is still the default and what compose brings up.
+
+    File-backed embedded mode takes an exclusive lock on its directory, so only one
+    process can use a given path at a time. Two benchmark runs sharing one directory is
+    a server-mode job.
     """
     if url == MEMORY_URL:
         return QdrantClient(location=MEMORY_URL)

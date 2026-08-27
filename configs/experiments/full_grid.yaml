@@ -1,8 +1,31 @@
 # 4 chunkers x 2 embedders x 3 retrievers = 24 configurations, sharing 8 built indexes.
+# Chunker and embedder decide what is indexed; the retriever does not. The harness groups
+# on that so the corpus is ingested 8 times rather than 24.
 name: full_grid_v1
 eval_set: data/eval/gdpr_ai_act_qa.jsonl
 base_config: configs/default.yaml
+
 sweep:
   chunker: [fixed, recursive, semantic, structural]
   embedder: [bge_small, bge_large]
   retriever: [dense, hybrid, hybrid_rerank]
+
+# Implementations of one stage do not share a signature. A dense retriever has no use for
+# bm25_weight, and the semantic chunker cuts on meaning so it has no overlap setting.
+# Without these blocks every implementation would be handed the base config's params and
+# would reject the ones it does not accept.
+params:
+  chunker:
+    fixed: {max_chars: 1200, overlap: 150}
+    recursive: {max_chars: 1200, overlap: 150}
+    structural: {max_chars: 1200, overlap: 150}
+    semantic: {max_chars: 1200, breakpoint_percentile: 25.0, min_chunk_chars: 200}
+  retriever:
+    dense: {top_k: 5}
+    hybrid: {top_k: 5, bm25_weight: 0.4, dense_weight: 0.6, overfetch_multiplier: 4}
+    hybrid_rerank:
+      top_k: 5
+      overfetch_multiplier: 4
+      bm25_weight: 0.4
+      dense_weight: 0.6
+      reranker_model: BAAI/bge-reranker-base

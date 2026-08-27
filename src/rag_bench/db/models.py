@@ -98,6 +98,11 @@ class BenchmarkRun(Base):
     status: Mapped[RunStatus] = mapped_column(String(_STATUS_LENGTH), index=True)
     eval_set: Mapped[str] = mapped_column(String(_NAME_LENGTH))
     question_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # A results table that does not say which model generated the answers cannot be
+    # reproduced or fairly compared, for the same reason it records the commit.
+    llm_provider: Mapped[str] = mapped_column(String(_COMPONENT_LENGTH), default="")
+    llm_model: Mapped[str] = mapped_column(String(_NAME_LENGTH), default="")
     sweep_config: Mapped[dict[str, Any]]
     error: Mapped[str | None] = mapped_column(Text, default=None)
 

@@ -41,6 +41,12 @@ dependencies = [
     "typer>=0.15",
 ]
 
+# RAGAS is optional. Its four metrics are LLM-judged, so they need a judge model and a
+# live provider, whereas hit rate, MRR and abstention accuracy are deterministic and
+# free. A default install stays lean and a benchmark run without this still reports.
+[project.optional-dependencies]
+ragas = ["ragas>=0.2.9"]
+
 [project.urls]
 Homepage = "https://github.com/pratikahir/rag-benchmark-kit"
 Repository = "https://github.com/pratikahir/rag-benchmark-kit"
@@ -109,7 +115,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 # Tests are self-documenting through their names, and interface stubs legitimately
 # ignore the arguments they are handed.
-"tests/**" = ["D100", "D101", "D102", "D103", "D104", "D107", "ARG002"]
+"tests/**" = ["D100", "D101", "D102", "D103", "D104", "D107", "ARG001", "ARG002"]
 "alembic/**" = ["D", "N999"]
 
 [tool.ruff.format]
@@ -128,7 +134,7 @@ enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
 # rank_bm25 ships no type information. Declared once here rather than as a per-import
 # ignore, so the exception is visible in one place.
 [[tool.mypy.overrides]]
-module = ["rank_bm25.*"]
+module = ["rank_bm25.*", "ragas.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

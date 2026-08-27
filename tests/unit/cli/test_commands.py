@@ -3,10 +3,13 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
+import pytest
 from langchain_core.messages import AIMessage
 from typer.testing import CliRunner
 
 from rag_bench.cli.main import app
+from rag_bench.core.settings import get_settings
+from rag_bench.db.session import get_engine
 from tests.conftest import OFFLINE_EMBEDDER
 
 runner = CliRunner()
@@ -181,3 +184,154 @@ def test_query_reports_a_missing_index(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "INDEX_NOT_READY" in result.output
+
+
+def test_benchmark_plan_reports_the_index_saving() -> None:
+    # The plan is what shows a 24-run grid needs only 8 ingestions.
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "plan",
+            "-e",
+            "configs/experiments/full_grid.yaml",
+            "--eval-set",
+            "data/eval/smoke.jsonl",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "24" in result.output
+    assert "ingestions saved" in result.output
+
+
+def test_benchmark_plan_reports_an_invalid_sweep(tmp_path: Path) -> None:
+    sweep = tmp_path / "bad.yaml"
+    sweep.write_text("name: x\neval_set: e.jsonl\nbase_config: b.yaml\nsweep:\n  chunker: []\n")
+
+    result = runner.invoke(app, ["benchmark", "plan", "-e", str(sweep)])
+
+    assert result.exit_code == 1
+    assert "CONFIG_INVALID" in result.output
+
+
+def test_benchmark_report_without_a_database_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("POSTGRES_DSN", "postgresql+psycopg://x@127.0.0.1:1/none")
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+
+    result = runner.invoke(app, ["benchmark", "report"])
+
+    assert result.exit_code == 1
+    assert "DATABASE_ERROR" in result.output
+
+
+def _benchmark_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the CLI at a throwaway database with the schema in place."""
+    from sqlalchemy import create_engine
+
+    from rag_bench.db.models import Base
+
+    dsn = f"sqlite:///{tmp_path / 'bench.db'}"
+    engine = create_engine(dsn)
+    Base.metadata.create_all(engine)
+    engine.dispose()
+
+    monkeypatch.setenv("POSTGRES_DSN", dsn)
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+
+
+def test_benchmark_report_with_no_runs_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _benchmark_database(tmp_path, monkeypatch)
+
+    result = runner.invoke(app, ["benchmark", "report"])
+
+    assert result.exit_code == 1
+    assert "NOT_FOUND" in result.output
+
+
+def test_benchmark_report_renders_a_stored_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _benchmark_database(tmp_path, monkeypatch)
+    _seed_run(tmp_path)
+
+    result = runner.invoke(app, ["benchmark", "report"])
+
+    assert result.exit_code == 0, result.output
+    assert "# Benchmark: seeded" in result.output
+    assert "| Chunker |" in result.output
+
+
+def test_benchmark_report_can_emit_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _benchmark_database(tmp_path, monkeypatch)
+    _seed_run(tmp_path)
+
+    result = runner.invoke(app, ["benchmark", "report", "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    assert "ranking_metric" in result.output
+
+
+def test_benchmark_report_can_write_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _benchmark_database(tmp_path, monkeypatch)
+    _seed_run(tmp_path)
+    monkeypatch.setenv("RESULTS_DIR", str(tmp_path / "results"))
+    get_settings.cache_clear()
+
+    result = runner.invoke(app, ["benchmark", "report", "--write"])
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "results" / "seeded" / "results.md").exists()
+    assert (tmp_path / "results" / "seeded" / "results.json").exists()
+
+
+def _seed_run(tmp_path: Path) -> None:
+    """Insert one finished configuration, so report has something to render."""
+    from rag_bench.db.models import (
+        BenchmarkRun,
+        ConfigurationMetrics,
+        RunConfiguration,
+        RunStatus,
+    )
+    from rag_bench.db.session import get_engine as engine_factory
+    from rag_bench.db.session import session_scope
+
+    with session_scope(engine_factory()) as session:
+        run = BenchmarkRun(
+            name="seeded",
+            git_sha="c" * 40,
+            status=RunStatus.COMPLETED,
+            eval_set="data/eval/smoke.jsonl",
+            question_count=10,
+            sweep_config={"chunker": ["structural"]},
+        )
+        session.add(run)
+        session.flush()
+        configuration = RunConfiguration(
+            run_id=run.id,
+            fingerprint="f" * 16,
+            index_fingerprint="i" * 16,
+            corpus="eu_regulations",
+            chunker="structural",
+            embedder="bge_small",
+            store="qdrant",
+            retriever="hybrid",
+            generator="cited",
+            resolved_config={},
+            status=RunStatus.COMPLETED,
+        )
+        session.add(configuration)
+        session.flush()
+        session.add(
+            ConfigurationMetrics(
+                configuration_id=configuration.id,
+                hit_rate=0.9,
+                mrr=0.75,
+                question_count=10,
+                by_difficulty={"multi_hop": {"hit_rate": 0.6}},
+            )
+        )

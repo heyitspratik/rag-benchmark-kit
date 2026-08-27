@@ -1,0 +1,17 @@
+# A reduced grid for fast local iteration: 2 chunkers x 1 embedder x 2 retrievers,
+# against the 10-question smoke set. Two indexes, four configurations.
+name: smoke_v1
+eval_set: data/eval/smoke.jsonl
+base_config: configs/default.yaml
+
+sweep:
+  chunker: [fixed, structural]
+  retriever: [dense, hybrid]
+
+params:
+  chunker:
+    fixed: {max_chars: 1200, overlap: 150}
+    structural: {max_chars: 1200, overlap: 150}
+  retriever:
+    dense: {top_k: 5}
+    hybrid: {top_k: 5, bm25_weight: 0.4, dense_weight: 0.6, overfetch_multiplier: 4}

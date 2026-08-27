@@ -93,3 +93,41 @@ def test_the_models_and_the_migration_agree(
     command.upgrade(config, "head")
 
     command.check(config)
+
+
+def test_upgrading_a_populated_database_succeeds(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Adding a NOT NULL column to a table that already holds rows fails without a server
+    # default, and that failure only appears against a database with real data in it.
+    import uuid
+
+    from sqlalchemy import text
+
+    monkeypatch.setenv("POSTGRES_DSN", database_url)
+    config = _config(database_url)
+    command.upgrade(config, "0001")
+
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO benchmark_runs (id, name, git_sha, git_dirty, status, "
+                    "eval_set, question_count, sweep_config) VALUES "
+                    "(:i, 'old', 'a', '0', 'completed', 'e.jsonl', 1, '{}')"
+                ),
+                {"i": str(uuid.uuid4())},
+            )
+    finally:
+        engine.dispose()
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(database_url)
+    try:
+        columns = {c["name"] for c in inspect(engine).get_columns("benchmark_runs")}
+    finally:
+        engine.dispose()
+
+    assert {"llm_provider", "llm_model"} <= columns

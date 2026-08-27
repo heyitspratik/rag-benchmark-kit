@@ -24,6 +24,37 @@ The default pipeline runs entirely on your machine at no cost: local embeddings 
 and Ollama for generation, so no API key and no signup are needed. The first run
 downloads model weights, which takes a few minutes and several gigabytes.
 
+## Benchmarking
+
+The harness is the runner that executes the pipeline repeatedly under different
+configurations and records scored results.
+
+```bash
+rag-bench benchmark plan                    # what a sweep would run, and what it costs
+rag-bench benchmark run                     # run the full grid
+rag-bench benchmark run --eval-set data/eval/smoke.jsonl   # fast iteration
+rag-bench benchmark resume <run_id>         # continue after an interruption
+rag-bench benchmark report <run_id>         # a markdown table, ready to paste
+```
+
+Two details worth knowing:
+
+**Indexes are built once per group, not once per configuration.** Chunker and embedder
+decide what gets indexed; the retriever does not. The default grid is 24 configurations
+over 8 distinct indexes, so grouping on that turns 24 ingestions into 8.
+
+**Runs are resumable.** Results are written as each question is answered, so a grid that
+dies at configuration 19 of 24 restarts with `resume` and skips what already finished.
+
+Metrics come in two kinds. `hit_rate`, `mrr`, `abstention_accuracy`, the latency
+percentiles and the cost estimate are computed directly: deterministic, free, and
+identical on a rerun. The four RAGAS metrics are judged by a language model, so they are
+optional, cost a call per question per configuration, and carry the judge's own variance.
+Enable them with `uv sync --extra ragas` and `--ragas`.
+
+Everything is also reported per difficulty band, because a configuration that wins
+overall but collapses on multi-hop questions is the finding worth reading.
+
 ## Configuration
 
 Every stage is chosen by name in [configs/default.yaml](configs/default.yaml). Changing a
