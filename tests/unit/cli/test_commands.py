@@ -335,3 +335,78 @@ def _seed_run(tmp_path: Path) -> None:
                 by_difficulty={"multi_hop": {"hit_rate": 0.6}},
             )
         )
+
+
+def test_eval_stats_describes_the_committed_set() -> None:
+    result = runner.invoke(app, ["eval", "stats"])
+
+    assert result.exit_code == 0, result.output
+    assert "questions" in result.output
+    assert "negative" in result.output
+
+
+def test_eval_verify_reports_a_broken_citation(tmp_path: Path) -> None:
+    # A ref naming nothing would make hit rate unreachable for that question forever,
+    # so it must fail loudly rather than be reported as a passing set.
+    corpus = _markdown_corpus(tmp_path)
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text(
+        '{"id": "q1", "question": "What fee?", "ground_truth": "A reasonable fee.", '
+        '"source_refs": ["nowhere.md#Nothing"], "difficulty": "single_hop"}\n'
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "eval",
+            "verify",
+            "-e",
+            str(bad),
+            "--corpus",
+            "markdown_docs",
+            "--corpus-path",
+            str(corpus),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "not a section of the corpus" in result.output
+
+
+def test_eval_verify_passes_a_grounded_set(tmp_path: Path) -> None:
+    corpus = _markdown_corpus(tmp_path)
+    good = tmp_path / "good.jsonl"
+    good.write_text(
+        '{"id": "q1", "question": "What fee may a controller charge?", '
+        '"ground_truth": "A controller may charge a reasonable fee based on '
+        'administrative costs.", "source_refs": ["controllers.md#Fees"], '
+        '"difficulty": "single_hop"}\n'
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "eval",
+            "verify",
+            "-e",
+            str(good),
+            "--corpus",
+            "markdown_docs",
+            "--corpus-path",
+            str(corpus),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Every citation resolves" in result.output
+
+
+def _markdown_corpus(tmp_path: Path) -> Path:
+    """A tiny corpus whose headings become citable sections."""
+    corpus = tmp_path / "docs"
+    corpus.mkdir(exist_ok=True)
+    (corpus / "controllers.md").write_text(
+        "# Controllers\n\nProse about controllers.\n\n## Fees\n\n"
+        "A controller may charge a reasonable fee based on administrative costs.\n"
+    )
+    return corpus

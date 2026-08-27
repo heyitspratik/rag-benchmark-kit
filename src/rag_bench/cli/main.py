@@ -6,6 +6,7 @@ import typer
 
 from rag_bench import __version__
 from rag_bench.cli import benchmark, corpus, index
+from rag_bench.cli import eval as eval_cmd
 from rag_bench.cli.query import query
 
 app = typer.Typer(
@@ -16,6 +17,7 @@ app = typer.Typer(
 app.add_typer(corpus.app, name="corpus")
 app.add_typer(index.app, name="index")
 app.add_typer(benchmark.app, name="benchmark")
+app.add_typer(eval_cmd.app, name="eval")
 app.command("query")(query)
 
 

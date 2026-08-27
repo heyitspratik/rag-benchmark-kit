@@ -4,7 +4,7 @@ CONFIG  ?= configs/default.yaml
 EXPERIMENT ?= configs/experiments/full_grid.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev serve up down migrate download-corpus pull-models index query \
+.PHONY: help install dev serve up down migrate download-corpus pull-models index query verify-eval \
         bench bench-smoke test test-integration lint format typecheck check clean
 
 help:  ## Show this help
@@ -42,6 +42,9 @@ index:  ## Build an index from $(CONFIG)
 
 query:  ## Ask a question: make query Q="..."
 	$(UV) run rag-bench query "$(Q)"
+
+verify-eval:  ## Check every evaluation pair against the corpus it cites
+	$(UV) run rag-bench eval verify
 
 bench:  ## Run the full benchmark grid
 	$(UV) run rag-bench benchmark run --experiment $(EXPERIMENT)

@@ -126,6 +126,83 @@ Secrets and machine-specific settings live in the environment instead. Copy
 make check    # the full gate: ruff, mypy --strict, pytest with a coverage floor
 ```
 
+## Benchmark methodology
+
+### The corpus
+
+The GDPR (Regulation (EU) 2016/679) and the EU AI Act (Regulation (EU) 2024/1689), fetched
+from the EU Publications Office. Both are long, densely cross-referential documents where
+naive chunking demonstrably fails, because definitions live far from their use sites and
+articles reference other articles. That is what makes the differences between strategies
+visible rather than noise.
+
+### The evaluation set
+
+[data/eval/gdpr_ai_act_qa.jsonl](data/eval/gdpr_ai_act_qa.jsonl) holds 116 question and
+answer pairs: 46 single-hop, 49 multi-hop, 11 definitional and 10 negative. They cite 124
+distinct sections, 73 in the GDPR and 51 in the AI Act.
+
+The 10 negative questions are the ones worth having. They ask things the corpus cannot
+answer, so `abstention_accuracy` measures whether a configuration invents an answer when
+it should decline, which the quality metrics alone will not show.
+
+**How it was built, and what has not happened yet.**
+
+1. Article and paragraph text was extracted from the downloaded corpus programmatically.
+2. An LLM (Claude) drafted every pair while reading that extracted text, not from memory.
+3. Each pair was checked automatically by `rag-bench eval verify`, which confirms that
+   every citation resolves to a real section and measures how much of each answer's
+   wording appears in the section it cites.
+
+As of the run on **2026-08-27**: **116 pairs, 0 citation errors, 0 pairs discarded, mean
+answer support 94.8%.** Re-run it yourself with `make verify-eval`.
+
+**No human has yet read these pairs.** That step is in the build plan and has not been
+done. The automated check proves an answer's wording comes from the article it cites; it
+cannot prove the answer is a fair reading of the law, that the cited article is the *best*
+authority, or that a multi-hop question needs the hops it claims. Until a domain reader
+has been through them, treat any number computed from this set as provisional.
+
+### What the metrics mean
+
+| Metric | Meaning |
+|---|---|
+| `hit_rate` | Share of answerable questions where retrieval surfaced a cited section |
+| `mrr` | Mean reciprocal rank of the first relevant chunk |
+| `abstention_accuracy` | Share of negative questions the system correctly declined |
+| `faithfulness` | RAGAS: is the answer supported by the retrieved context |
+| `answer_relevancy` | RAGAS: does the answer address the question |
+| `context_precision` | RAGAS: is the retrieved context free of irrelevant material |
+| `context_recall` | RAGAS: did retrieval find what the ground truth needed |
+| `p50/p95 latency` | Retrieval and generation timed separately |
+| `estimated_cost_usd` | Token counts priced from `configs/pricing.yaml` |
+
+The first three are computed directly: deterministic, free, and identical on a rerun. The
+four RAGAS metrics are judged by a language model, so they carry the judge's own variance
+and are optional.
+
+## Limitations
+
+An honest list, because the numbers are worth less without it.
+
+- **The evaluation set has not been human-verified.** See above. This is the single
+  largest caveat.
+- **RAGAS metrics are LLM-judged** and carry their own variance. Two runs of the same
+  configuration will not produce identical faithfulness scores.
+- **116 questions is a small sample.** Differences of a few percentage points between
+  configurations are inside the noise, and on the 10-question smoke set several
+  configurations tie outright.
+- **Definitional questions are scored loosely.** GDPR Article 4 and AI Act Article 3 hold
+  every definition in one article, 8,700 and 17,300 characters respectively, so any chunk
+  overlapping them counts as a hit. The other 121 citations are paragraph-level with a
+  median span of 473 characters.
+- **Results are corpus-specific.** These are two EU regulations in English. Nothing here
+  says the same chunker wins on medical notes, source code or customer support tickets.
+- **English only.** Both the corpus and the embedding models are English.
+- **The published numbers come from one model.** Swapping the generator changes
+  faithfulness and abstention behaviour, which is why every run records the provider and
+  model it used.
+
 ## Container
 
 A multi-stage build: `uv sync --frozen --no-dev` produces the environment in a builder
