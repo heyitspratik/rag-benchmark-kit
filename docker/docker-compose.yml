@@ -1,0 +1,147 @@
+# The whole stack: `docker compose up --wait` leaves a server that can answer a real
+# question. Ordering is expressed with healthchecks rather than sleeps, so a service
+# starts when its dependency is genuinely ready and not merely running.
+name: rag-benchmark-kit
+
+services:
+  postgres:
+    # pgvector rather than the plain postgres image: the pgvector store needs the
+    # extension, and installing it into postgres:16-alpine at runtime would mean
+    # compiling it on every fresh volume.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DB: rag_bench
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag_bench"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      # The image ships no curl or wget, so the probe opens a TCP socket through bash.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  ollama-pull:
+    # One shot. The first run downloads several gigabytes of model weights, which is why
+    # the README says so before anyone waits on it wondering what is happening.
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama"]
+    command: ["pull", "${OLLAMA_MODEL:-llama3.2:3b}"]
+    restart: "no"
+
+  migrate:
+    # The schema is owned by Alembic, so it is applied by its own one-shot service
+    # rather than by the API on startup, where two replicas would race each other.
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DSN: postgresql+psycopg://rag:rag@postgres:5432/rag_bench
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  bootstrap:
+    # Downloads the corpus and builds the index, so that one curl against a freshly
+    # started stack returns a real answer rather than INDEX_NOT_READY.
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_healthy
+    environment:
+      POSTGRES_DSN: postgresql+psycopg://rag:rag@postgres:5432/rag_bench
+      QDRANT_URL: http://qdrant:6333
+    volumes:
+      - corpus_data:/app/data/corpus
+      - hf_cache:/app/.cache/huggingface
+    command:
+      - /bin/sh
+      - -c
+      - "rag-bench corpus download && rag-bench index build --config configs/default.yaml"
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      ollama-pull:
+        condition: service_completed_successfully
+      bootstrap:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: prod
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      API_KEY: ${API_KEY:-}
+      # Container-internal hostnames. These differ from the host-facing values in
+      # .env.example, which is the whole reason the base URL is configurable.
+      POSTGRES_DSN: postgresql+psycopg://rag:rag@postgres:5432/rag_bench
+      QDRANT_URL: http://qdrant:6333
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - corpus_data:/app/data/corpus
+      - hf_cache:/app/.cache/huggingface
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  ollama_models:
+  corpus_data:
+  # Model weights are mounted rather than baked into the image, so a rebuild does not
+  # re-download them and the image stays a fraction of its otherwise-inflated size.
+  hf_cache:

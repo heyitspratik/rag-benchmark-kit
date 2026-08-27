@@ -96,6 +96,44 @@ jobs:
       - name: Integration tests
         run: uv run pytest -m integration
 
+  docker:
+    name: Build the image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (do not push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: rag-benchmark-kit:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Report the image size and guard against runaway growth
+        run: |
+          BYTES=$(docker image inspect rag-benchmark-kit:ci --format '{{.Size}}')
+          MB=$((BYTES / 1024 / 1024))
+          echo "Image size: ${MB} MB"
+          echo "### Image size: ${MB} MB" >> "$GITHUB_STEP_SUMMARY"
+          # CPU torch alone is roughly 550 MB, so the ceiling reflects what is
+          # achievable with local embeddings rather than an aspiration.
+          if [ "$MB" -gt 1600 ]; then
+            echo "Image grew past the 1600 MB ceiling." >&2
+            exit 1
+          fi
+
+      - name: Smoke test the image
+        run: |
+          docker run --rm rag-benchmark-kit:ci rag-bench --version
+          docker run --rm rag-benchmark-kit:ci alembic --version
+          docker run --rm --user root rag-benchmark-kit:ci sh -c 'id -u appuser'
+
   commit-lint:
     name: Conventional commit PR title
     if: github.event_name == 'pull_request'

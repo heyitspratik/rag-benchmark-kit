@@ -13,6 +13,23 @@ measures which combination actually answers questions best.
 Ingestion and retrieval over a real corpus: the GDPR (Regulation (EU) 2016/679) and the
 EU AI Act (Regulation (EU) 2024/1689), fetched from the EU Publications Office.
 
+The whole stack, with one command:
+
+```bash
+make up      # or: docker compose -f docker/docker-compose.yml up --wait
+curl -s localhost:8000/api/v1/queries -H 'Content-Type: application/json' \
+  -d '{"question": "Can a controller charge a fee for a subject access request?"}'
+```
+
+`up` starts Postgres, Qdrant and Ollama, applies the migrations, pulls the model,
+downloads the two regulations and builds the index, then starts the API. Nothing else is
+needed before that curl returns a real answer.
+
+**The first run downloads several gigabytes** of model weights and takes a while. They
+land in a named volume, so later runs start quickly.
+
+Without Docker:
+
 ```bash
 make dev                 # sync dependencies and install the pre-commit hooks
 make download-corpus     # fetch and cache the two regulations
@@ -21,8 +38,7 @@ make query Q="Can a controller charge a fee for a subject access request?"
 ```
 
 The default pipeline runs entirely on your machine at no cost: local embeddings on CPU
-and Ollama for generation, so no API key and no signup are needed. The first run
-downloads model weights, which takes a few minutes and several gigabytes.
+and Ollama for generation, so no API key and no signup are needed.
 
 ## Benchmarking
 
@@ -109,6 +125,22 @@ Secrets and machine-specific settings live in the environment instead. Copy
 ```bash
 make check    # the full gate: ruff, mypy --strict, pytest with a coverage floor
 ```
+
+## Container
+
+A multi-stage build: `uv sync --frozen --no-dev` produces the environment in a builder
+stage, and the runtime image carries the resulting virtualenv, a non-root user and a
+`HEALTHCHECK`, but none of the build tooling.
+
+The image is roughly 1.3 GB, most of it CPU PyTorch, whose shared libraries alone are
+about 450 MB. That is the cost of local embeddings working with no API key, which is a
+deliberate trade rather than an oversight: dropping `sentence-transformers` would fit the
+image under 500 MB but would make the free quickstart impossible. Model weights are
+mounted from a volume rather than baked in, so a rebuild does not re-download them.
+
+Kubernetes manifests are deliberately absent. This is a benchmark tool that is run, not a
+service that is operated, and a Helm chart done well once elsewhere is worth more than one
+done twice adequately.
 
 ## Licence
 
