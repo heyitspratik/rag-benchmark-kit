@@ -29,7 +29,7 @@ RUN rm -rf /app/.venv/lib/python3.12/site-packages/torch/test \
            /app/.venv/lib/python3.12/site-packages/torch/_inductor/codegen/cuda \
     && find /app/.venv -name '*.pyi' -delete
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # A compromised process should not be able to write to its own code.
 RUN groupadd --system --gid 1001 appuser \
