@@ -79,7 +79,7 @@ jobs:
       # Cached separately from the Python environment: model weights are large, change
       # rarely, and re-downloading them would dominate the run.
       - name: Restore the embedding model cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.cache/huggingface
           key: hf-${{ hashFiles('configs/default.yaml') }}
