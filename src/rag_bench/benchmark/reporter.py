@@ -221,16 +221,31 @@ def to_markdown(report: RunReport) -> str:
         "",
     ]
 
-    headers = [label for _, label in _COLUMNS]
+    # A column nobody measured is dropped rather than filled with n/a. Four dead
+    # columns read as an unfinished project; the omission plus the note below reads as
+    # a deliberate choice, which is what it is.
+    columns = _populated_columns(ranked)
+    omitted = [label for key, label in _COLUMNS if (key, label) not in columns]
+
+    headers = [label for _, label in columns]
     lines.append("| " + " | ".join(headers) + " |")
     lines.append("|" + "|".join(["---"] * len(headers)) + "|")
 
     for position, row in enumerate(ranked):
-        cells = [_format(key, row.value(key)) for key, _ in _COLUMNS]
+        cells = [_format(key, row.value(key)) for key, _ in columns]
         # The winner is emphasised because the table exists to answer one question.
         if position == 0 and row.value(metric) is not None:
             cells = [f"**{cell}**" for cell in cells]
         lines.append("| " + " | ".join(cells) + " |")
+
+    if omitted:
+        lines.extend(
+            [
+                "",
+                f"Not measured in this run: {', '.join(omitted)}. The RAGAS metrics need "
+                "a judge model and are enabled with `--ragas`.",
+            ]
+        )
 
     failures = [row for row in ranked if row.status == RunStatus.FAILED]
     if failures:
@@ -305,6 +320,19 @@ def write_report(report: RunReport, directory: Path) -> tuple[Path, Path]:
     json_path.write_text(to_json(report), encoding="utf-8")
     logger.info("report.written", run_id=str(report.run_id), directory=str(directory))
     return markdown_path, json_path
+
+
+def _populated_columns(rows: list[ConfigurationRow]) -> list[tuple[str, str]]:
+    """The columns at least one configuration has a value for.
+
+    Component names are always kept: they identify the row rather than score it.
+    """
+    identifiers = {"chunker", "embedder", "retriever"}
+    return [
+        (key, label)
+        for key, label in _COLUMNS
+        if key in identifiers or any(row.value(key) is not None for row in rows)
+    ]
 
 
 def _difficulty_section(rows: list[ConfigurationRow]) -> list[str]:

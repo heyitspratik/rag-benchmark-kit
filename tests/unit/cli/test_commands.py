@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage
 from typer.testing import CliRunner
 
 from rag_bench.cli.main import app
+from rag_bench.core.exceptions import LLMProviderError
 from rag_bench.core.settings import get_settings
 from rag_bench.db.session import get_engine
 from tests.conftest import OFFLINE_EMBEDDER
@@ -168,9 +169,17 @@ def test_query_can_show_the_retrieved_context(tmp_path: Path) -> None:
 def test_query_reports_an_unreachable_provider(tmp_path: Path) -> None:
     # The whole point of the startup probe: a clean message, not a stack trace from
     # somewhere deep inside a retrieval call.
+    #
+    # The failure is forced rather than assumed. Relying on nothing listening on port
+    # 11434 made this pass for the wrong reason, and it broke the moment a real Ollama
+    # was installed on the machine.
     config = _built_config(tmp_path)
 
-    result = runner.invoke(app, ["query", "anything", "-c", str(config)])
+    with patch(
+        "rag_bench.pipeline.querier.check_llm_health",
+        side_effect=LLMProviderError("Ollama is not reachable"),
+    ):
+        result = runner.invoke(app, ["query", "anything", "-c", str(config)])
 
     assert result.exit_code == 1
     assert "LLM_PROVIDER_ERROR" in result.output

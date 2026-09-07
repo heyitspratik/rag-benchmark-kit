@@ -67,7 +67,7 @@ def _tags_response(*names: str) -> httpx.Response:
 def test_health_check_passes_when_the_model_is_pulled() -> None:
     settings = _llm(ollama_model="llama3.2:3b")
 
-    with patch("rag_bench.core.llm.httpx.get", return_value=_tags_response("llama3.2:3b")) as get:
+    with patch("httpx.Client.get", return_value=_tags_response("llama3.2:3b")) as get:
         check_llm_health(settings)
 
     assert get.call_args.args[0] == "http://localhost:11434/api/tags"
@@ -76,7 +76,7 @@ def test_health_check_passes_when_the_model_is_pulled() -> None:
 def test_health_check_tolerates_an_implicit_latest_tag() -> None:
     settings = _llm(ollama_model="llama3.2")
 
-    with patch("rag_bench.core.llm.httpx.get", return_value=_tags_response("llama3.2:latest")):
+    with patch("httpx.Client.get", return_value=_tags_response("llama3.2:latest")):
         check_llm_health(settings)
 
 
@@ -84,7 +84,7 @@ def test_health_check_names_the_pull_command_when_the_model_is_absent() -> None:
     settings = _llm(ollama_model="llama3.2:3b")
 
     with (
-        patch("rag_bench.core.llm.httpx.get", return_value=_tags_response("qwen2:0.5b")),
+        patch("httpx.Client.get", return_value=_tags_response("qwen2:0.5b")),
         pytest.raises(LLMProviderError, match="make pull-models"),
     ):
         check_llm_health(settings)
@@ -94,7 +94,7 @@ def test_health_check_reports_an_unreachable_ollama() -> None:
     settings = _llm()
 
     with (
-        patch("rag_bench.core.llm.httpx.get", side_effect=httpx.ConnectError("refused")),
+        patch("httpx.Client.get", side_effect=httpx.ConnectError("refused")),
         pytest.raises(LLMProviderError, match="not reachable"),
     ):
         check_llm_health(settings)
@@ -103,7 +103,7 @@ def test_health_check_reports_an_unreachable_ollama() -> None:
 def test_health_check_skips_keyed_providers() -> None:
     settings = _llm(provider="anthropic", anthropic_api_key="sk-a")
 
-    with patch("rag_bench.core.llm.httpx.get") as get:
+    with patch("httpx.Client.get") as get:
         check_llm_health(settings)
 
     get.assert_not_called()
@@ -117,7 +117,7 @@ def test_health_check_survives_an_unexpected_tags_payload(payload: Any) -> None:
     )
 
     with (
-        patch("rag_bench.core.llm.httpx.get", return_value=response),
+        patch("httpx.Client.get", return_value=response),
         pytest.raises(LLMProviderError, match="is not pulled"),
     ):
         check_llm_health(settings)

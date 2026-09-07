@@ -38,6 +38,11 @@ ABSTENTION_MESSAGE = (
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
+# Models paraphrase the sentinel: a space or hyphen instead of the underscore, lower
+# case, surrounding punctuation. Matching the token literally scored a correct refusal
+# as a hallucination and silently zeroed abstention accuracy for every configuration.
+_ABSTENTION_RE = re.compile(r"INSUFFICIENT[\s_\-]*CONTEXT", re.IGNORECASE)
+
 SYSTEM_PROMPT = """\
 You answer questions strictly from the numbered context passages you are given.
 
@@ -126,7 +131,7 @@ class CitedGenerator(BaseGenerator):
         text = _as_text(response.content).strip()
         usage = _usage(response)
 
-        if ABSTENTION_TOKEN in text:
+        if _ABSTENTION_RE.search(text):
             return self._abstention(question, contexts, usage)
 
         citations = _resolve_citations(text, used)

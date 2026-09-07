@@ -193,3 +193,30 @@ def test_a_provider_failure_becomes_a_provider_error() -> None:
 def test_a_non_positive_context_budget_is_rejected(budget: int) -> None:
     with pytest.raises(ConfigValidationError, match="max_context_chars must be positive"):
         CitedGenerator(max_context_chars=budget)
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "INSUFFICIENT_CONTEXT",
+        "INSUFFICIENT CONTEXT",
+        "insufficient context",
+        "Insufficient-Context",
+        "INSUFFICIENT CONTEXT.",
+        "The answer is: INSUFFICIENT CONTEXT",
+    ],
+)
+def test_a_paraphrased_refusal_still_counts_as_abstention(reply: str) -> None:
+    # A real model wrote "INSUFFICIENT CONTEXT" with a space. Matching the sentinel
+    # literally scored that correct refusal as a hallucination and zeroed abstention
+    # accuracy for every configuration in the run.
+    answer, _ = _generate(reply)
+
+    assert answer.abstained is True
+    assert answer.text == ABSTENTION_MESSAGE
+
+
+def test_an_ordinary_answer_is_not_mistaken_for_a_refusal() -> None:
+    answer, _ = _generate("The context here is sufficient to answer the question [1].")
+
+    assert answer.abstained is False

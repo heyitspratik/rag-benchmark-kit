@@ -104,9 +104,12 @@ def check_llm_health(settings: LLMSettings, *, timeout_s: float = HEALTH_TIMEOUT
 
     tags_url = f"{settings.ollama_base_url.rstrip('/')}/api/tags"
     try:
-        response = httpx.get(tags_url, timeout=timeout_s)
-        response.raise_for_status()
-        payload = response.json()
+        # Context-managed so the socket closes. A bare httpx.get leaks the connection,
+        # which only shows up once something is actually listening on the port.
+        with httpx.Client(timeout=timeout_s) as client:
+            response = client.get(tags_url)
+            response.raise_for_status()
+            payload = response.json()
     except httpx.HTTPError as exc:
         raise LLMProviderError(
             f"Ollama is not reachable at {settings.ollama_base_url}. {_PULL_HINT}",

@@ -129,3 +129,30 @@ def test_json_carries_the_generating_model(report) -> None:  # type: ignore[no-u
 
     assert payload["llm_provider"] == "ollama"
     assert payload["llm_model"] == "llama3.2:3b"
+
+
+def test_columns_nobody_measured_are_dropped(report) -> None:  # type: ignore[no-untyped-def]
+    # Four columns of n/a read as an unfinished project. Omitting them, and saying so,
+    # reads as the deliberate choice it is.
+    rendered = to_markdown(report)
+    header = next(line for line in rendered.splitlines() if line.startswith("| Chunker"))
+
+    assert "Faith." not in header
+    assert "Ctx.Prec." not in header
+    assert "Hit@k" in header
+    assert "Not measured in this run: Faith." in rendered
+
+
+def test_the_row_identifiers_are_never_dropped(report) -> None:  # type: ignore[no-untyped-def]
+    # These name the row rather than score it, so they stay even if every metric is
+    # missing, or the table would have nothing to identify a configuration by.
+    header = next(line for line in to_markdown(report).splitlines() if line.startswith("| Chunker"))
+
+    assert all(name in header for name in ("Chunker", "Embedder", "Retriever"))
+
+
+def test_measured_columns_are_kept_and_not_announced_as_missing(report) -> None:  # type: ignore[no-untyped-def]
+    rendered = to_markdown(report)
+
+    assert "| Hit@k |" in rendered
+    assert "Not measured in this run: Hit@k" not in rendered
