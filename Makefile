@@ -4,7 +4,7 @@ CONFIG  ?= configs/default.yaml
 EXPERIMENT ?= configs/experiments/full_grid.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev serve up down migrate download-corpus pull-models index query verify-eval \
+.PHONY: help install dev serve up down migrate download-corpus pull-models index query verify-eval sync-check \
         bench bench-smoke test test-integration lint format typecheck check clean
 
 help:  ## Show this help
@@ -69,7 +69,10 @@ format:  ## Apply formatting and autofixes
 typecheck:  ## Type-check the source tree
 	$(UV) run mypy
 
-check: lint typecheck test  ## The full quality gate
+sync-check:  ## Fail if the environment has drifted from the lockfile
+	$(UV) sync --all-groups --frozen
+
+check: sync-check lint typecheck test  ## The full quality gate
 
 clean:  ## Remove caches and build artefacts
 	rm -rf .mypy_cache .pytest_cache .ruff_cache htmlcov .coverage coverage.xml dist build
