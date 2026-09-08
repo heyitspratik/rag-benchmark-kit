@@ -9,39 +9,82 @@
 that measures which combination actually answers best.**
 
 Not a chat-with-your-PDF demo. The point is evidence: change `chunker.name` from `fixed`
-to `structural`, rerun, and see what it did to hit rate, latency and cost across 116
-questions over the GDPR and the EU AI Act.
+to `structural`, rerun, and see what it did to hit rate, latency and cost over the GDPR
+and the EU AI Act. In the published run below that one change is worth 8 points of hit
+rate, measured over a 116 pair evaluation set built from the regulations themselves.
 
 ## Results
 
-> **No benchmark run has been published yet.** The harness works end to end and the
-> evaluation set is committed and verified, but this table is not filled in, because
-> publishing invented figures would defeat the entire purpose of the repository.
->
-> Reproduce it yourself:
->
-> ```bash
-> make up                                        # the whole stack, one command
-> make bench                                     # the 24-configuration grid
-> rag-bench benchmark report <run_id> --write    # writes results/<name>/
-> ```
->
-> [`.github/workflows/benchmark.yml`](.github/workflows/benchmark.yml) runs a reduced grid
-> on a clean machine, so the result is reproducible rather than merely claimed.
+All 24 configurations, 40 questions each, run on 2026-09-08 with `ollama` / `llama3.2:3b`
+at commit `e788566`. Sorted by hit rate, winner emphasised. Full table and the
+per-difficulty breakdown in [`results/full_grid_v1/results.md`](results/full_grid_v1/results.md).
 
-The table it produces is sorted by faithfulness, with the winning row emphasised:
-
-| Chunker | Embedder | Retriever | Faith. | Hit@k | MRR | Abstain | p50 Ret. | Cost $ |
+| Chunker | Embedder | Retriever | Hit@k | MRR | Abstain | p50 Ret. | p95 Gen. | Cost $ |
 |---|---|---|---|---|---|---|---|---|
-| **structural** | **bge_small** | **hybrid_rerank** | | | | | | |
-| structural | bge_small | dense | | | | | | |
-| _22 further rows_ | | | | | | | | |
+| **structural** | **bge_large** | **hybrid** | **0.971** | **0.831** | **1.000** | **112** | **31383** | **0.0000** |
+| structural | bge_small | hybrid | 0.971 | 0.792 | 1.000 | 22 | 28985 | 0.0000 |
+| structural | bge_small | dense | 0.970 | 0.831 | 0.667 | 20 | 31299 | 0.0000 |
+| recursive | bge_small | hybrid_rerank | 0.941 | 0.772 | 0.667 | 3809 | 35050 | 0.0000 |
+| fixed | bge_large | hybrid | 0.939 | 0.612 | 0.833 | 131 | 34893 | 0.0000 |
+| fixed | bge_small | hybrid_rerank | 0.938 | 0.760 | 1.000 | 3967 | 35470 | 0.0000 |
+| structural | bge_large | hybrid_rerank | 0.935 | 0.844 | 1.000 | 4210 | 26931 | 0.0000 |
+| structural | bge_small | hybrid_rerank | 0.933 | 0.822 | 1.000 | 4104 | 35000 | 0.0000 |
+| _15 rows omitted_ | | | | | | | | |
+| semantic | bge_large | dense | 0.697 | 0.544 | 1.000 | 189 | 37931 | 0.0000 |
 
-**What to look for.** The interesting finding is rarely the top row. It is whether the
-expensive configuration earns its cost, since a cross-encoder rerank can add seconds per
-query for retrieval quality a plain dense search already matched. Read the per-difficulty
-breakdown too: a configuration that wins overall and collapses on multi-hop questions is
-telling you something the aggregate hides.
+Latencies are milliseconds. Cost is zero because the answers were generated locally, which
+is the point of the Ollama default, not a rounding artefact.
+
+### What the run actually says
+
+**The chunker decides the outcome.** Averaged over every embedder and retriever it pairs
+with, `structural` scores 0.949 and `semantic` scores 0.768. That 18 point spread is wider
+than the embedder axis and the retriever axis put together. Splitting on the regulation's
+own article and paragraph boundaries beats inferring boundaries from embedding similarity,
+on a corpus that ships real boundaries.
+
+**The bigger embedder is not worth it here.** `bge_large` averages 0.859 against
+`bge_small` at 0.853, a difference of half a point, for six times the retrieval latency
+(160 ms against 26 ms median). Row two of the table is the practical pick: the same 0.971
+hit rate as the winner at a fifth of the retrieval time.
+
+**The rerank rescues weak chunking rather than improving good chunking.** Across the grid
+`hybrid_rerank` does lead on average, 0.902 against 0.863 for plain `hybrid`, but it costs
+4059 ms of median retrieval against 74 ms, roughly 55 times slower. Look at where the gain
+lands. For `semantic`, the worst chunker, the rerank is its best retriever by a clear
+margin. For `structural`, the best chunker, plain `hybrid` beats the reranked variant
+(0.971 against 0.935). Paying seconds per query to recover from a chunking decision you
+could have made correctly for free is the expensive way to solve it.
+
+**Abstention is not free either.** Three configurations that retrieve well still answered
+questions the corpus cannot support, scoring 0.667 on the six negative questions. Hit rate
+alone would have hidden that.
+
+### Caveats on these numbers
+
+- **A 40-question subset**, not the full 116 pair set, chosen to keep one run near an hour
+  on a developer machine. `data/eval/subset_40.jsonl` holds it.
+- **`llama3.2:3b` generated every answer.** A 3B model is a floor, not a ceiling. Retrieval
+  metrics are model-independent, the abstention and latency figures are not.
+- **31 of 960 answers (3.2%) were dropped** for citing a passage number that was never
+  supplied. The generator refuses invalid citations rather than silently accepting them, so
+  those questions are recorded as errors and excluded. Eight configurations lost none, the
+  worst lost 4 of 40. It is spread evenly enough not to favour any configuration.
+- **The RAGAS metrics were not measured.** They need a judge model. Enable with
+  `uv sync --extra ragas` and `--ragas`.
+- **No human has read the evaluation pairs.** See
+  [`docs/benchmark-methodology.md`](docs/benchmark-methodology.md).
+
+Reproduce the whole thing:
+
+```bash
+make up                                        # the whole stack, one command
+make bench                                     # the 24-configuration grid
+rag-bench benchmark report <run_id> --write    # writes results/<name>/
+```
+
+[`.github/workflows/benchmark.yml`](.github/workflows/benchmark.yml) runs a reduced grid on
+a clean machine, so the result is reproducible rather than merely claimed.
 
 ## Architecture
 

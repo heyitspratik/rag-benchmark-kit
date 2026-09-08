@@ -72,7 +72,7 @@ Deterministic, free, and identical on a rerun.
 |---|---|
 | `hit_rate` | Share of answerable questions where at least one retrieved chunk covers a cited section. Negatives are excluded, because they have no correct section and counting them would penalise correct behaviour. |
 | `mrr` | Mean of `1 / (rank + 1)` for the first relevant chunk, counting a miss as zero |
-| `abstention_accuracy` | Share of the 10 negative questions the system correctly declined |
+| `abstention_accuracy` | Share of the negative questions the system correctly declined |
 | `p50` / `p95` latency | Retrieval and generation timed separately, because they are different trade-offs |
 | `estimated_cost_usd` | Token counts priced from [`configs/pricing.yaml`](../configs/pricing.yaml). Local models are genuinely free, so they price at zero. |
 
@@ -103,12 +103,16 @@ the corpus 8 times instead of 24.
 
 ## Resumability
 
-Results are written as each question is answered, not at the end. A run that dies at
-configuration 19 of 24 restarts with `rag-bench benchmark resume <run_id>` and skips what
-already finished, rebuilding only the indexes the remaining work needs.
+Results are written as each question is answered, not at the end. A run that dies part way
+through restarts with `rag-bench benchmark resume <run_id>` and skips what already
+finished, rebuilding only the indexes the remaining work needs. The granularity is the
+configuration: a half-finished one is answered again from its first question, and the
+earlier attempts are replaced rather than duplicated.
 
-This is not a nicety. The full grid took 66 minutes on a developer machine against the
-10-question smoke set alone.
+This is not a nicety. The published run was deliberately interrupted at configuration 21
+of 24 and resumed later. It skipped the 20 finished configurations, rebuilt 2 indexes
+instead of 8, and completed the remaining 4 in 63 minutes against a total run time of
+6.4 hours.
 
 ## Reproducibility
 
@@ -119,6 +123,11 @@ traced to the code and the model behind it is an assertion, not evidence.
 ## Threats to validity
 
 - The evaluation set has not been human-verified.
+- A question whose answer cites a passage that was never retrieved is recorded as an error
+  and left out of that configuration's metrics, so denominators vary slightly between
+  configurations. In the published run this dropped 31 of 960 answers, 3.2%, with the worst
+  configuration losing 4 of its 40. Small models do this more than large ones, and the
+  per-configuration counts are in `results.json`.
 - RAGAS metrics carry the judge's variance; two runs will not agree exactly.
 - 116 questions is a small sample. Differences of a few points are inside the noise.
 - Definitional questions cite whole definition articles (GDPR Art. 4 is 8,700 characters,
