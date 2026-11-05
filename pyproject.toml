@@ -47,7 +47,7 @@ dependencies = [
 # live provider, whereas hit rate, MRR and abstention accuracy are deterministic and
 # free. A default install stays lean and a benchmark run without this still reports.
 [project.optional-dependencies]
-ragas = ["ragas>=0.2.9"]
+ragas = ["ragas>=0.4.3"]
 
 [project.urls]
 Homepage = "https://github.com/pratikahir/rag-benchmark-kit"
