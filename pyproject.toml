@@ -78,7 +78,7 @@ test = [
     # starlette.testclient dropped httpx in favour of httpx2 and warns when it is
     # missing. With filterwarnings=error that warning kills collection, so the API
     # tests need this declared rather than inherited by accident.
-    "httpx2>=2.12",
+    "httpx2>=2.16.0",
     "pytest>=8.3",
     "pytest-cov>=6.0",
 ]
