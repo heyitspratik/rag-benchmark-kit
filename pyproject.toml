@@ -40,7 +40,7 @@ dependencies = [
     # CPU-only index below actually applies to it.
     "torch>=2.5",
     "typer>=0.15",
-    "uvicorn[standard]>=0.32",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 # RAGAS is optional. Its four metrics are LLM-judged, so they need a judge model and a
