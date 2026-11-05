@@ -38,7 +38,7 @@ dependencies = [
     "structlog>=24.4",
     # Declared directly, not just pulled in by sentence-transformers, so that the
     # CPU-only index below actually applies to it.
-    "torch>=2.5",
+    "torch>=2.15.0",
     "typer>=0.15",
     "uvicorn[standard]>=0.32",
 ]
